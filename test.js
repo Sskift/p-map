@@ -5658,6 +5658,34 @@ test('rejects with the error of a thenable from the source `next()` that rejects
 	}
 });
 
+test.serial('a throwing `done` getter from an async source does not cause an unhandled rejection', async t => {
+	const error = new Error('done getter');
+	const source = {
+		[Symbol.asyncIterator]() {
+			return {
+				next() {
+					return Promise.resolve({
+						get done() {
+							throw error;
+						},
+					});
+				},
+			};
+		},
+	};
+	const identity = value => value;
+
+	const unhandledRejections = await collectUnhandledRejections(async () => {
+		await t.throwsAsync(pMap(source, identity), {is: error});
+		await t.throwsAsync(pMap(source, identity, {stopOnError: false}), {is: error});
+		await t.throwsAsync(pMapSettled(source, identity), {is: error});
+		await t.throwsAsync(collectAsyncIterable(pMapIterable(source, identity)), {is: error});
+		await t.throwsAsync(collectAsyncIterable(pMapIterable(source, identity, {preserveOrder: false})), {is: error});
+	});
+
+	t.deepEqual(unhandledRejections, []);
+});
+
 test('pMap - rejects instead of hanging when the source `next()` returns something that is not an object', async t => {
 	for (const result of [undefined, null]) {
 		const source = {
